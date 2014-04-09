@@ -257,6 +257,9 @@ class nova(
   $rootwrap_config          = '/etc/nova/rootwrap.conf',
   $nova_user_id             = undef,
   $nova_group_id            = undef,
+  $nova_public_key          = undef,
+  $nova_private_key         = undef,
+  $nova_shell               = '/bin/false',
   # deprecated in folsom
   #$root_helper = $::nova::params::root_helper,
   $monitoring_notifications = false,
@@ -293,10 +296,47 @@ class nova(
     groups     => 'nova',
     home       => '/var/lib/nova',
     managehome => false,
-    shell      => '/bin/false',
+    shell      => $nova_shell,
     uid        => $nova_user_id,
     gid        => $nova_group_id,
   }
+
+  if $nova_public_key or $nova_private_key {
+    file { '/var/lib/nova/.ssh':
+      ensure => directory,
+      mode   => 0700,
+      owner  => nova,
+      group  => nova,
+    }
+
+    if $nova_public_key {
+      ssh_authorized_key { 'nova-migration-public-key':
+        ensure   => present,
+        key      => $nova_public_key[key],
+        type     => $nova_public_key[type],
+        user     => 'nova',
+        require => File['/var/lib/nova/.ssh'],
+      }
+    }
+
+    $nova_private_key_file = $nova_private_key[type] ? {
+      'ssh-rsa' => '/var/lib/nova/.ssh/id_rsa',
+      'ssh-dsa' => '/var/lib/nova/.ssh/id_dsa',
+      'ssh-ecdsa' => '/var/lib/nova/.ssh/id_ecdsa',
+      default   => '/var/lib/nova/.ssh/id_rsa'
+    }
+
+    if $nova_private_key {
+      file { $nova_private_key_file:
+        content => $nova_private_key[key],
+        mode    => 0600,
+        owner   => nova,
+        group   => nova,
+        require => File['/var/lib/nova/.ssh'],
+      }
+    }
+  }
+  
 
   # all nova_config resources should be applied
   # after the nova common package
